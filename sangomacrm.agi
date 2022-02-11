@@ -1,0 +1,85 @@
+#!/usr/bin/php -q
+<?php
+$bootstrap_settings['skip_astman'] = true;
+$bootstrap_settings['include_compress'] = false;
+$restrict_mods = array('sangomacrm' => true);
+if (!@include_once(getenv('FREEPBX_CONF') ? getenv('FREEPBX_CONF') : '/etc/freepbx.conf')) {
+	include_once('/etc/asterisk/freepbx.conf');
+}
+$freepbx = \FreePBX::Create();
+$agidir = $freepbx->Config->get('ASTAGIDIR');
+require_once $agidir."/phpagi.php";
+$root = $freepbx->Config->get("AMPWEBROOT");
+
+if(!$freepbx->Sangomacrm->isLicensed()) {
+	exit(1);
+}
+
+//TODO: just json_encode and base64 this
+$agi = new AGI();
+
+$uuid = agi_get_var("CHANNEL(LINKEDID)");
+$destination = agi_get_var("CRM_DESTINATION");
+$source = agi_get_var("CRM_SOURCE");
+$direction = agi_get_var("CRM_DIRECTION");
+$hangup = agi_get_var("CRM_HANGUP");
+$zulu_raw_type = agi_get_var("ZULU_RAW_TYPE");
+$zulu_type = agi_get_var("ZULU_TYPE");
+$zulu_url= agi_get_var("ZULU_URL");
+$exttocall = agi_get_var("EXTTOCALL");
+$cnum = agi_get_var("CALLERID(num)");
+$cnam = agi_get_var("CALLERID(name)");
+$voicemail = agi_get_var("CRM_VOICEMAIL");
+
+$agi->verbose("LINKEDID: $uuid", 0);
+$agi->verbose("SOURCE: $source", 0);
+$agi->verbose("DESTINATION: $destination", 0);
+$agi->verbose("DIRECTION: $direction", 0);
+$agi->verbose("EXTTOCALL: $exttocall", 0);
+$agi->verbose("CALLTYPE: ".empty($hangup) ? "START" : "END", 0);
+
+$array = array(
+	"uuid" => $uuid,
+	"source" => $source,
+	"destination" => $destination,
+	"direction" => $direction,
+	"type" => empty($hangup) ? "START" : "END",
+	"zulu_raw_type" => $zulu_raw_type,
+	"zulu_type" => $zulu_type,
+	"zulu_url" => $zulu_url,
+	"exttocall" => $exttocall,
+	"cnum" => $cnum,
+	"cnam" => $cnam,
+	"callpop" => (isset($argv[1]) && $argv[1] == "true"),
+	"voicemail" => $voicemail
+);
+
+if(empty($direction)) {
+	$agi->verbose("Direction is empty, skipping");
+	if(!empty($array['callpop']) && $zulu_raw_type == "Sangomacrm-url") {
+		if(in_array($source,$freepbx->Sangomacrm->getLocalDevices()) || in_array($destination,$freepbx->Sangomacrm()->getLocalDevices())) {
+			$agi->verbose("CRM detected local call, setting urls to nothing", 0);
+			$agi->set_variable('ZULU_URL', '');
+			$agi->set_variable('ZULU_TYPE', '');
+		}
+	}
+	exit(0);
+}
+$arg = escapeshellarg(base64_encode(json_encode($array)));
+$agi->verbose("SCRIPT: php ".$root."/admin/modules/sangomacrm/importOne.php ".$arg." > /dev/null 2>&1 &", 0);
+dbug($root."/admin/modules/sangomacrm/importOne.php ".$arg." > /dev/null 2>&1 &");
+
+exec("php ".$root."/admin/modules/sangomacrm/importOne.php ".$arg." > /dev/null 2>&1 &");
+
+function agi_get_var($value) {
+	global $agi;
+	$r = $agi->get_variable($value);
+
+	if ($r['result'] == 1) {
+		$result = $r['data'];
+		return $result;
+	}
+	return '';
+}
+
+exit();

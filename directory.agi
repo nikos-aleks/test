@@ -1,0 +1,171 @@
+#!/usr/bin/env php
+<?php
+$restrict_mods = array("directory");
+include '/etc/freepbx.conf';
+require_once(dirname(__FILE__).'/directory.lib.php');
+$loopcounter1=$loopcounter2=0;
+$matches=false;
+$search=array('result' => '');
+$dir=new Dir();
+$matches = false;
+$needs_welcome = true;
+
+if (isset($dir->agivar['keypress'])) {
+	$needs_welcome = false;
+	$search = $dir->agivar['keypress'];
+	$matches = true;
+}
+
+while($loopcounter1 <= $dir->dir['repeat_loops']){
+	//get inital search term
+	while($loopcounter2 <= $dir->dir['repeat_loops'] && !$matches ){
+		//get any number of digits, terminated by timeout or #
+		$buffer = '';
+		if ($needs_welcome) {
+			$needs_welcome = false;
+			if ($dir->default_annoucement()) {
+				$search = $dir->agi->fastpass_get_data($buffer, 'cdir-welcome',100,3);
+				$buffer = $search['result'];
+			}
+			if ((strlen($buffer) < 3) && (strstr($search['result'],'0') === false)) {
+				$recdig_count = strlen($buffer);
+				$balance_digit = 3 - $recdig_count;
+				$search = fastpass_get_data_multiple($dir->agi, $dir->dir['announcement'], 3000, $balance_digit);
+				if(strlen($buffer)> 0){
+					$search = $buffer.$search;
+				}
+				$buffer = '';
+			}
+		} else {
+			$search = fastpass_get_data_multiple($dir->agi, $dir->dir['repeat_recording'], 3000, 3);
+		}
+		dbug("Input recieved: ".$search);
+		$matches = $dir->search($search,1);
+		$loopcounter2++;
+	}
+	//hangup if we failed to receive anything meanigfull
+	if($loopcounter2 == $dir->dir['repeat_loops'] && !$matches){//seem like we ran out of tries...
+		$dir->$agi->exec('background',$dir->dir['invalid_recording']);
+		$dir->bail();
+		break;
+	}
+	$matchesloop = 0;
+	$matches = $dir->search($search,1);
+	//prompt the caller for more info if there are too many results (and he didnt terminate with #)
+
+	while ($matches > 1 && $matchesloop < $dir->dir['repeat_loops'] && substr($search,-1)!='#') {
+		if ($matches < 10) {
+			$compound = array('silence/1','cdir-there-are',(integer)$matches,'cdir-matching-entries-or-pound');
+			$validdigits = '1234567890#';
+		} else {
+			// don't allow #, get new recording that indicates such
+			$compound = array('silence/1','cdir-there-are',(integer)$matches,'cdir-matching-entries-continue');
+			$validdigits = '1234567890';
+		}
+		$press=$dir->getKeypress($compound, $validdigits, 3000);
+		if(!empty($press) || $press === 0){
+			$search.=$press;
+			$matches=$dir->search($search,1);
+			if ($matches > 9) {
+				$search = rtrim($search,'#');
+				dbug("Too many found: $matches, remove # if set and try again");
+			}
+		}else{
+			$matchesloop++;
+		}
+		// if they timeout and there are 3 or fewer matches then just play them
+		if (empty($press) && $matches <=3) {
+			break;
+		}
+	}
+
+	//act based on the amount of matches
+	if($matches > 1 && $matches <= 9){
+		//draw up variable of valid key presses
+		$validkeys='';
+		for ($i=1; $i<$matches+1; $i++) {
+			$validkeys .= $i;
+		}
+		dbug("valid keys for entries are: $validkeys");
+
+		//playback entries
+		$matches=$dir->search($search);
+		foreach($matches as $idx => $match){
+			$ret = $dir->getKeypress('for',$validkeys,0);
+			if (trim($ret)) {
+				break;
+			}
+			$ret = $dir->readContact($matches[$idx],$validkeys,0);
+			if (trim($ret['result'])) {
+				break;
+			}
+			$ret = $dir->getKeypress('press',$validkeys,0);
+			if (trim($ret)) {
+				break;
+			}
+			$ret = $dir->agi->say_digits($idx+1,$validkeys);
+			if (trim($ret['result'])) {
+				$ret['result'] = chr($ret['result']);
+				break;
+			}
+
+		}
+
+		//wait for a responce before restarting loop
+		if (!isset($ret) || !$ret || $ret['result'] == '0') {
+			$ret = $dir->agi->wait_for_digit(10000);
+			if (trim($ret['result'])) {
+				$ret['result'] = chr($ret['result']);
+			}
+		}
+
+		if(trim($ret['result']) && strpos($validkeys, trim($ret['result'])) !== false){
+			call($matches[$ret['result']-1]);
+		}
+	} elseif($matches == 1) {
+		//call person $macthes[0];
+		$matches=$dir->search($search);
+		call($matches[0]);
+	} else {
+		$loopcounter1++;
+		$search = $matches = 0;
+	}
+}
+
+if ($loopcounter1) {
+	$dir->bail();
+}
+
+function call($contact){
+	global $dir;
+	$dir->readContact($contact);
+	if($dir->dir['alert_info'] != ''){
+		$dir->agi->set_variable('ALERT_INFO',$dir->dir['alert_info']);
+	}
+	if(!empty($dir->dir['rvolume'])) {
+		$dir->agi->set_variable('RVOL',$dir->dir['rvolume']);
+	}
+	if($dir->dir['callid_prefix'] != ''){
+		$callid_name = $dir->agi->get_variable('CALLERID(name)');
+		$dir->agi->set_variable('CALLERID(name)',$dir->dir['callid_prefix'].$callid_name['data']);
+	}
+	$dir->agi->set_variable('DIR_DIAL',$contact['dial']);
+	exit;
+}
+
+function fastpass_get_data_multiple($agi, $filename, $timeout, $max_digits) {
+	$buffer = '';
+	$t = $agi->exec('background',$filename);
+	$tmp = $t['result'] != 0 ? chr($t['result']) : "";
+	$tmp = $tmp != '*' ? $tmp : '#'; //dont allow star turn it into a pound
+	$buffer .= $tmp;
+	$count = 0;
+	while(strlen($buffer) < $max_digits && $tmp != '#' && $count < $max_digits) {
+		$t = $agi->wait_for_digit($timeout);
+		$tmp = $t['result'] != 0 ? chr($t['result']) : "";
+		$tmp = $tmp != '*' ? $tmp : '#'; //dont allow star turn it into a pound
+		$buffer .= $tmp;
+		$count++;
+	}
+	return $buffer;
+}

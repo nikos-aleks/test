@@ -1,0 +1,19 @@
+#!/usr/bin/php
+<?PHP 
+if (!@include_once(getenv('FREEPBX_CONF') ? getenv('FREEPBX_CONF') : '/etc/freepbx.conf')) { 
+	include_once('/etc/asterisk/freepbx.conf'); 
+}
+require_once "phpagi.php";
+global $db;
+
+$agi 		= new AGI();
+$agi->answer();
+$agi->noop("make clean called");
+
+$extension 	= $argv[1];
+$value		= $argv[2];
+$sql 		= "UPDATE pms_rooms SET clean = :clean  WHERE extension = :extension";
+$stm 		= $db->prepare($sql);
+$ret		= $stm->execute(array(":clean" => $value,"extension" => $extension));
+$agi->stream_file('pms/clean'); 
+?>

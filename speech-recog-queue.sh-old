@@ -1,0 +1,63 @@
+#!/bin/sh -x
+
+checkresults()
+{
+	while read row; do
+		case ${row:0:4} in
+			"200 ")		return		;;
+			"510 ")		return		;;
+			"520 ")		return		;;
+			*)		echo [${row:0:4}]	;;
+		esac
+	done
+}
+
+cmd_sox="/usr/bin/sox"
+
+path_script="/var/lib/asterisk/agi-bin/calls"
+. $path_script/calls.main.conf.local
+
+date_now_full=$(date "+%Y-%m-%d.%H%M%S")
+path_sounds="/var/spool/asterisk/recog/queue"
+path_www="/var/www/html/queue"
+file_record="$path_sounds/$date_now_full.$$"
+file_ogg="$file_record.ogg"
+file_wav="$file_record.wav"
+file_mp3="$file_record.mp3"
+file_text="$file_record.text"
+file_log="$file_record.log"
+format="sln"
+intkey="#"
+[ -z "$2" ] && timeout_absolute=5000 || timeout_absolute=$(($2*1000))
+[ -z "$3" ] && timeout_silence=2 || timeout_silence=$3
+
+echo "SET VARIABLE file_record $file_record"
+echo "RECORD FILE $file_record $format $intkey $timeout_absolute s=$timeout_silence"
+checkresults
+
+echo "SET VARIABLE recog_wav 0"
+echo "SET VARIABLE recog_mp3 0"
+
+if [ -s ${file_record}.sln ]; then
+	# silence 1 0.1 0.5% -1 0.1 0.5% pad 0 0.1
+	$cmd_sox -b 16 -r 8000 -t raw -e signed-integer ${file_record}.sln $file_wav silence 1 0.1 0.1% -1 0.1 0.1% pad 0.1 0.2
+	if [ $(stat -c %s $file_wav) -ge 6000 ]; then
+		ln -s $file_wav "$path_www/$1.$$.wav"
+		url_wav="https://$asterisk_domain/queue/$1.$$.wav"
+		echo "SET VARIABLE recog_wav $url_wav"
+	else
+		echo "SET VARIABLE recog_wav -1"
+	fi
+	
+	$cmd_sox -b 16 -r 8000 -t raw -e signed-integer ${file_record}.sln $file_mp3 silence 1 0.1 0.1% -1 0.1 0.1% pad 0.1 0.2
+	if [ $(stat -c %s $file_mp3) -ge 600 ]; then
+		ln -s $file_mp3 "$path_www/$1.$$.mp3"
+		url="https://$asterisk_domain/queue/$1.$$.mp3"
+		echo "SET VARIABLE recog_mp3 $url"
+	else
+		echo "SET VARIABLE recog_mp3 -1"
+	fi
+else
+	echo "SET VARIABLE recog_wav -3"
+	echo "SET VARIABLE recog_mp3 -3"
+fi

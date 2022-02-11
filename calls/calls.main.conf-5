@@ -1,0 +1,77 @@
+#!/bin/sh
+
+db_name="crm_mr"
+db_host="rc1a-56t2p7cavywnk3bk.mdb.yandexcloud.net"
+#db_host="db-03.ivrcrm.ru"
+db_host="185.189.135.53"
+db_port="3306"
+db_user="ivr"
+db_pass="DGJ1Gnut"
+#db_ca="/var/lib/asterisk/agi-bin/calls/yandex.pem"
+db_table_calls_queue="ivrcrm"
+db_table_filter_recog="filter_recog"
+
+apikey_default="AIzaSyDkimUB2RLD3ddYI8NZbrotq42q-J9i8eY"
+apikey_default="AIzaSyBiWmoScQ-x7AApLTnOmywMY62CgGWpxYQ"
+
+table_column_id="id"
+table_column_number="phone"
+table_column_network_prefere="network_prefere"
+table_column_network_called="network_called"
+table_column_company="company"
+table_column_context="context"
+table_column_apikey="apikey"
+table_column_status="result"
+table_column_dtmf="dtmf"
+table_column_bill="seconds"
+table_column_duration="duration"
+table_column_utterance="utterance"
+table_column_confidence="confidence"
+table_column_audio_list="ask one two"
+table_column_audio_ask="wav"
+table_column_audio_one="wav1"
+table_column_audio_two="wav2"
+table_column_record="record"
+table_column_calling="calling"
+table_column_asterisk_id="asterisk_id"
+table_column_amd_status="amd_status"
+table_column_amd_cause="amd_cause"
+
+www_path_records="/var/www/html/records"
+www_url_records="https://$asterisk_domain/records"
+ast_path_records="/var/spool/asterisk/monitor"
+
+ami_username="admin"
+ami_password="TSGxCzIvWfLp"
+
+cmd_hash="/usr/bin/sha1sum"
+
+cmd_convert_ogg="/usr/bin/opusdec"
+cmd_convert_sox="/usr/bin/sox"
+cmd_convert_wav_opt="-t wav -r 8k -c 1"
+cmd_convert_ogg_opt="--force-wav"
+cmd_convert_alaw_opt="-t raw -r 8k -c 1 -e a-law"
+path_audio="/tmp/sounds"
+lock_audio="$path_audio/audio.lock"
+#mkdir -p $path_audio
+
+runner_pause_file="calls.cron.pause"
+runner_sleep_time="0.5"
+[ -z "$sleep_min" ] && sleep_min=$runner_sleep_time
+[ -z "$steal_max" ] && steal_max="10"
+[ -z "$sleep_div" ] && sleep_div="5"
+
+script_sleep_start="0.1"
+script_running_max="10"
+[ -z "$proc_running_max" ] && proc_running_max="5"
+[ -z "$call_ready_few_limit" ] && call_ready_few_limit="5"
+
+network_1="beeline"
+network_2="mtt"
+network_3="mts"
+network_4="tele2"
+network_5="megafon"
+
+#[ -z "$node_address" ] && node_address="188.119.112.159"
+[ -z "$node_address" ] && node_address="185.189.134.53"
+[ -z "$node_port" ] && node_port="1815"

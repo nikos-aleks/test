@@ -1,0 +1,23 @@
+#!/usr/bin/php
+<?PHP 
+if (!@include_once(getenv('FREEPBX_CONF') ? getenv('FREEPBX_CONF') : '/etc/freepbx.conf')) { 
+	include_once('/etc/asterisk/freepbx.conf'); 
+}
+
+require_once "phpagi.php";
+global $db;
+
+$agi 			= new AGI();
+$agi->answer();
+$extension 		= $argv[1];
+$mini_bar 		= $argv[2];
+$sql 			= "SELECT * from pms_rooms WHERE extension = :extension LIMIT 1";
+$stm 			= $db->prepare($sql);
+$stm->execute(array("extension" => $extension));
+$ret			= $stm->fetch(\PDO::FETCH_ASSOC);
+$old_mini_bar	= $ret["mini_bar"];
+$new_mini_bar  	= $old_mini_bar."".$mini_bar;
+$sql 			= "UPDATE pms_rooms SET mini_bar = :mini_bar  WHERE extension = :extension and free = 0 and guest_name != ''";
+$stm 			= $db->prepare($sql);
+$ret			= $stm->execute(array(":mini_bar" => $new_mini_bar,"extension" => $extension));
+?>

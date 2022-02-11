@@ -1,0 +1,41 @@
+#!/usr/bin/php
+<?PHP 
+if (!@include_once(getenv('FREEPBX_CONF') ? getenv('FREEPBX_CONF') : '/etc/freepbx.conf')) { 
+	include_once('/etc/asterisk/freepbx.conf'); 
+	$restrict_mods = array('pms' => true);
+}
+
+require_once "phpagi.php";
+global $db;
+$pms 			= FreePBX::Pms();
+$agi 			= new AGI();
+$agi->answer();
+$extension 		= trim($argv[1]);
+$service_number	= trim($argv[2]);
+$check			= (!empty($argv[3]))? trim($argv[3]): "false";
+if($check == "true"){
+	$PMS_services = $pms->getPMS_maid_services($service_number);
+	if(!empty($PMS_services[0])){
+		$agi->set_variable("HOUSEKEEPING", "true");
+	}
+	else{
+		$agi->set_variable("HOUSEKEEPING", "false");
+	}
+	exit(0);
+}
+else{
+	$sql 			= "SELECT reception from pms_config";
+	$stm 			= $db->prepare($sql);
+	$stm->execute();
+	$ret			= $stm->fetch(\PDO::FETCH_ASSOC);
+	$reception		= trim($ret["reception"]);
+	$sql 			= "SELECT label from pms_maid_services WHERE service_number = :service_number LIMIT 1";
+	$stm 			= $db->prepare($sql);
+	$stm->execute(array(":service_number" => $service_number));
+	$ret			= $stm->fetch(\PDO::FETCH_ASSOC);
+	$label			= $ret["label"];
+	$pms->send_sms($reception, $label, $extension);	
+}
+exit(0);
+
+?>

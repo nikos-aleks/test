@@ -1,0 +1,7 @@
+Channel: SIP/432711/89525799645
+Context: megafon_voice
+Set: calls_number=89525799645
+Set: calls_callid=89525799645
+Set: calls_scenario=1016
+Extension: 1
+Priority: 1
